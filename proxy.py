@@ -1,5 +1,6 @@
 import config
 import httpx
+import json
 import os
 import subprocess
 import logging
@@ -55,6 +56,24 @@ async def proxy(request: Request):
         url = f"http://localhost:8000{path}"
 
     data = await request.body()
+
+    try:
+        decoded = json.loads(data)
+        if isinstance(decoded, dict) and "prompt" in decoded:
+            prompt = decoded.pop("prompt", "")
+            suffix = decoded.pop("suffix", "")
+            print("------------------")
+            print(json.dumps(decoded, indent=4))
+            print("------\nPrompt:\n\n")
+            print(prompt)
+            print("------\nSuffix:\n\n")
+            print(suffix)
+            print("------------------")
+            print("")
+
+    except json.JSONDecodeError:
+        pass
+
     headers = dict(request.headers)
     r = None
     async with httpx.AsyncClient() as client:
@@ -72,6 +91,29 @@ async def proxy(request: Request):
     content = r.content if r else ''
     status_code = r.status_code if r else 204
     headers = dict(r.headers) if r else dict()
+    print("----")
+    print("Response headers:")
+    print(json.dumps(headers, indent=4))
+    print("Response body:")
+    # If content is data: lines, reformat it
+    debug_content = content
+    try:
+        lines = content.decode().split("\n")
+        if any(line.startswith("data: ") for line in lines):
+            bits = []
+            for line in lines:
+                if line.startswith("data: "):
+                    try:
+                        bits.append(json.loads(line[6:]))
+                    except json.JSONDecodeError:
+                        bits.append(line)
+                else:
+                    bits.append(line)
+            debug_content = json.dumps(bits, indent=4)
+    except Exception:
+        pass
+    print(debug_content)
+    print("------------------")
     return responses.Response(content=content, status_code=status_code, headers=headers)
 
 
